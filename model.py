@@ -1,3 +1,4 @@
+
 import os
 import numpy as np
 import pandas as pd
@@ -5,83 +6,89 @@ from scipy.misc import imread
 from sklearn.metrics import accuracy_score
 import tensorflow as tf
 
-def FitModel(a,b):
-    # number of neurons in each layer
-    input_num_units = 1*8
-    hidden_num_units = 80
-    output_num_units = 1
+""" Weight initialization for Neural Network Layers"""
+def weight(shape):
+    return tf.Variable(tf.truncated_normal(shape, stddev=0.1))
 
-    # define placeholders
-    x = tf.placeholder(tf.float32, [None, input_num_units])
-    y = tf.placeholder(tf.float32, [None, output_num_units])
+""" Bias initialization """
+def bias(shape):
+    return tf.Variable(tf.constant(0.1, shape=shape))
 
-    # set remaining variables
-    epochs = 5
-    batch_size = 128
-    learning_rate = 0.01
 
-    ### define weights and biases of the neural network (refer this article if you don't understand the terminologies)
+def output(input,w,b):
+    return tf.matmul(input,w)+b
 
-    weights = {
-    'hidden': tf.Variable(tf.random_normal([input_num_units, hidden_num_units])),
-    'output': tf.Variable(tf.random_normal([hidden_num_units, output_num_units]))
-    }
+""" Neural Network Initialization """
+def FitModel(x_train,y_train):
+    # Number of features
+    x_columns = 8
 
-    biases = {
-    'hidden': tf.Variable(tf.random_normal([hidden_num_units])),
-    'output': tf.Variable(tf.random_normal([output_num_units]))
-    }
+    # Number of output values
+    y_columns = 2
 
-    hidden_layer = tf.add(tf.matmul(x, weights['hidden']), biases['hidden'])
-    hidden_layer = tf.nn.relu(hidden_layer)
+    # Number of neurons in Hidden Layer(Hit and Trial) 
+    layer1_num = 7
 
-    output_layer = tf.matmul(hidden_layer, weights['output']) + biases['output']
-    cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(output_layer, y))
+    # Number of epochs(iterations of forward and backward passes)
+    epoch_num = 10
 
-    optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cost)
+    # Number of batches to be run in an epoch
+    train_num = 1000
 
-    init = tf.initialize_all_variables()
+    # Batch Size for a particular training set
+    batch_size =100   #226200
 
-    with tf.Session() as sess:
-    # create initialized variables
-        sess.run(init)
+    # AVriable for checking progress
+    display_size = 1
+
+    # Placeholders for inputs and outputs
+    x = tf.placeholder(tf.float32,[None,x_columns])
+    y = tf.placeholder(tf.int32,[None])
+
+    # Hidden layer taking input from x
+    layer1 = tf.nn.relu(output(x,weight([x_columns,layer1_num]),bias([layer1_num])))
     
-    ### for each epoch, do:
-    ###   for each batch, do:
-    ###     create pre-processed batch
-    ###     run optimizer by feeding batch
-    ###     find cost and reiterate to minimize
-    
-        for epoch in range(epochs):
-            avg_cost = 0
-            total_batch = int(train.shape[0]/batch_size)
-            for i in range(total_batch):
-                batch_x, batch_y = batch_creator(batch_size, train_x.shape[0], 'train')
-                _, c = sess.run([optimizer, cost], feed_dict = {x: batch_x, y: batch_y})
-            
-                avg_cost += c / total_batch
-            
-            print "Epoch:", (epoch+1), "cost =", "{:.5f}".format(avg_cost)
-    
-        print "\nTraining complete!"
-    
-    
-    # find predictions on val set
-        pred_temp = tf.equal(tf.argmax(output_layer, 1), tf.argmax(y, 1))
-        accuracy = tf.reduce_mean(tf.cast(pred_temp, "float"))
-        print "Validation Accuracy:", accuracy.eval({x: val_x.reshape(-1, input_num_units), y: dense_to_one_hot(val_y)})
-    
-        predict = tf.argmax(output_layer, 1)
-        pred = predict.eval({x: test_x.reshape(-1, input_num_units)})
+    #Output Layer taking input from layer1
+    prediction = output(layer1,weight([layer1_num,y_columns]),bias([y_columns]))
 
+    # Definition of loss function
+    loss=tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y,logits=prediction))
+    
+    # Choice of Optimizer
+    train_step = tf.train.AdamOptimizer().minimize(loss)
+
+    # Tensorflow Interactive
+    sess = tf.InteractiveSession()
+    sess.run(tf.global_variables_initializer())
+
+    # Start Training
+    for epoch in range(epoch_num):
+        avg_loss = 0.
+        for i in range(train_num):
+            index = np.random.choice(len(x_train),batch_size)
+            x_train_batch = x_train[index]
+            y_train_batch = y_train[index]
+            _,c = sess.run([train_step,loss],feed_dict={x:x_train_batch,y:y_train_batch})
+            avg_loss += c/train_num
+        if epoch % display_size == 0:
+            print("Epoch:{0},Loss:{1}".format(epoch+1,avg_loss))
+
+    print("Training Finished")
 
 def main():
-    print "Hello World!"
-    a = np.loadtxt('sampledata.txt', delimiter=' ')
-    a = a[:,1:9]
-    b = np.loadtxt('output.txt',delimiter='\n')
-    print a.shape
-    FitModel(a,b)
-    print a         
+    # Load feature set
+    x_train = np.loadtxt('sampledata.txt', delimiter=' ')
+    
+    # Remove attribute1[uid] not required as it has no relation to output
+    x_train = x_train[:,1:9]
+
+    # Load output labels for respective feature set
+    y_train = np.loadtxt('output.txt',delimiter='\n')
+
+    print x_train.shape
+
+    # Call the Neural Network logic
+    FitModel(x_train,y_train)
+         
 if __name__== "__main__":
       main()
