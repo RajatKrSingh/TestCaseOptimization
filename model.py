@@ -18,6 +18,8 @@ def bias(shape):
 def output(input,w,b):
     return tf.matmul(input,w)+b
 
+
+
 """ Neural Network Initialization """
 def FitModel(x_train,y_train):
     # Number of features
@@ -27,16 +29,16 @@ def FitModel(x_train,y_train):
     y_columns = 2
 
     # Number of neurons in Hidden Layer(Hit and Trial) 
-    layer1_num = 7
+    layer1_num = 4
 
     # Number of epochs(iterations of forward and backward passes)
-    epoch_num = 10
+    epoch_num = 1000
 
     # Number of batches to be run in an epoch
-    train_num = 1000
+    train_num = 400
 
     # Batch Size for a particular training set
-    batch_size =100   #226200
+    batch_size = 512   #226200
 
     # AVriable for checking progress
     display_size = 1
@@ -61,18 +63,78 @@ def FitModel(x_train,y_train):
     sess = tf.InteractiveSession()
     sess.run(tf.global_variables_initializer())
 
+    #---------------------- Start of bullshit
+    #print(tf.trainable_variables())
+ 
+    # Declaration of input to hidden layer variables
+    var = [v for v in tf.trainable_variables() if v.name == "Variable:0"][0]
+    weight_initial_input = sess.run(var)
+    delta_weight_input = np.zeros(shape=(x_columns,layer1_num))
+    difference_weightinitial_input = np.zeros(shape=(x_columns,layer1_num))
+    current_weight_input = np.zeros(shape=(x_columns,layer1_num))
+    previous_weight_input = np.zeros(shape=(x_columns,layer1_num))
+    sensitivity_input = np.zeros(shape=(x_columns,layer1_num))
+    
+	#Declaration of hidden to output layer variables
+    var = [v for v in tf.trainable_variables() if v.name == "Variable_2:0"][0]
+    weight_initial_hidden = sess.run(var)
+    delta_weight_hidden = np.zeros(shape=(layer1_num,y_columns))
+    difference_weightinitial_hidden = np.zeros(shape=(layer1_num,y_columns))
+    current_weight_hidden = np.zeros(shape=(layer1_num,y_columns))
+    previous_weight_hidden = np.zeros(shape=(layer1_num,y_columns))
+    sensitivity_hidden = np.zeros(shape=(layer1_num,y_columns))
+
+
     # Start Training
     for epoch in range(epoch_num):
+       	previous_weight_input = current_weight_input
+    	previous_weight_hidden = current_weight_hidden
+
+
         avg_loss = 0.
         for i in range(train_num):
-            index = np.random.choice(len(x_train),batch_size)
-            x_train_batch = x_train[index]
-            y_train_batch = y_train[index]
+            x_train_batch = x_train[i*batch_size:(i+1)*(batch_size)]
+            y_train_batch = y_train[i*batch_size:(i+1)*(batch_size)]
+
             _,c = sess.run([train_step,loss],feed_dict={x:x_train_batch,y:y_train_batch})
             avg_loss += c/train_num
         if epoch % display_size == 0:
             print("Epoch:{0},Loss:{1}".format(epoch+1,avg_loss))
 
+    	#--------------------- Random Bullshit
+
+    	# Find sensitivities for input to hidden layer
+    	var = [v for v in tf.trainable_variables() if v.name == "Variable:0"][0]
+    	current_weight_input = sess.run(var)
+    	delta_weight_input = np.subtract(current_weight_input,previous_weight_input)
+    	difference_weightinitial_input = np.subtract(current_weight_input,weight_initial_input)
+    	
+    	#--------------------------Loop over for all sensitivity values
+    	for row_loop in range(x_columns):
+    		for col_loop in range(layer1_num):		
+    			if(difference_weightinitial_input[row_loop,col_loop]==0):
+    				print "Keeping sensitivity as the same"
+    			else:
+    				sensitivity_input[row_loop,col_loop] += abs(((delta_weight_input[row_loop,col_loop]*delta_weight_input[row_loop,col_loop])*100.0*current_weight_input[row_loop,col_loop])/(difference_weightinitial_input[row_loop,col_loop]))
+
+    	# Find sensitivities for hidden to output layer
+        var = [v for v in tf.trainable_variables() if v.name == "Variable_2:0"][0]
+    	current_weight_hidden = sess.run(var)
+    	delta_weight_hidden = np.subtract(current_weight_hidden,previous_weight_hidden)
+    	difference_weightinitial_hidden = np.subtract(current_weight_hidden,weight_initial_hidden)
+    	
+    	#--------------------------Loop over for all sensitivity values
+    	for row_loop in range(layer1_num):
+    		for col_loop in range(y_columns):		
+    			if(difference_weightinitial_hidden[row_loop,col_loop]==0):
+    				print "Keeping sensitivity as the same"
+    			else:
+    				sensitivity_hidden[row_loop,col_loop] += abs(((delta_weight_hidden[row_loop,col_loop]*delta_weight_hidden[row_loop,col_loop])*100.0*current_weight_hidden[row_loop,col_loop])/(difference_weightinitial_hidden[row_loop,col_loop]))
+
+    print "Input-Hidden Layer Sensitivities"
+    print sensitivity_input
+    print "Hidden-Output Layer Sensitivities"
+    print sensitivity_hidden
     print("Training Finished")
 
 def main():
@@ -85,7 +147,14 @@ def main():
     # Load output labels for respective feature set
     y_train = np.loadtxt('output.txt',delimiter='\n')
 
-    print x_train.shape
+    # Randomize all the tuples
+    y_train = y_train[:,None]
+    x_train = np.hstack((x_train,y_train))
+    np.random.shuffle(x_train)
+
+    row,col = x_train.shape
+    y_train = x_train[:,col-1]
+    x_train = x_train[:,0:8]
 
     # Call the Neural Network logic
     FitModel(x_train,y_train)
