@@ -175,80 +175,88 @@ def FitModel(x_train,y_train):
     
 
     pruning_prediction = 1.0
-    # Start pruning the ANN
+
+    # Start pruning the ANN based on sensitivities   
     count=0
+
+    # Variables that keep count of number of weights pruned in the first and second layer respectively
     minindex_layer0 = 0
     minindex_layer1 = 0
 
+    # Array of indexes of pruned weights for first and second layer
     xinput_pruned = np.array([])
     xhidden_pruned = np.array([])
     yinput_pruned = np.array([])
     yhidden_pruned = np.array([])
 
+    # Variables for final weight pruned when accuracy falls below threshold stored to be restored
     weight_to_restore = 0.0
     layer_to_restore = 0
     xindex_to_restore = 0
     yindex_to_restore = 0
-    while(pruning_prediction>0.95):
+
+    # Threshold accuracy
+    threshold_acc = 0.95
+
+    #Start actual pruning iterations
+    while(pruning_prediction>threshold_acc):
+
+    	# Get layer and index of the weight corresponding to the minimum sensitivity
         i_index,j_index,layer = GetPrunedWeight(sensitivity_input,sensitivity_hidden,minindex_layer0,minindex_layer1,x_columns,layer1_num)
-        layer_to_restore,xindex_to_restore,yindex_to_restore = i_index,xindex_to_restore,yindex_to_restore
-        if(layer==0 and minindex_layer0<x_columns*layer1_num):
+        
+        # Restore values stored 
+        layer_to_restore,xindex_to_restore,yindex_to_restore = layer,i_index,j_index
+        
+        # Check condition for pruned weight in first layer or second layer
+        if(layer==0):
+
+        	# Get current weight
             var = [v for v in tf.trainable_variables() if v.name == "Variable:0"][0]
             new_replaced_matrix = sess.run(var)
+            
+            # Store weight for restore if necessarily
             weight_to_restore = new_replaced_matrix[i_index,j_index]
+
+            # Prune actual weight
             new_replaced_matrix[i_index,j_index] = 0
 
+            # Store the pruned weight index to initialize to 0
             xinput_pruned = (np.append(xinput_pruned,i_index)).astype(int)
             yinput_pruned = (np.append(yinput_pruned,j_index)).astype(int)
             
-            print xinput_pruned
-
+            # Save the new weight matrix 
             sess.run(tf.assign(var,tf.cast(tf.constant(new_replaced_matrix),tf.float32)))
+            
+            # Increment variable for number of weights pruned
             minindex_layer0 += 1
 
-        elif(layer==1 and minindex_layer1<layer1_num*2):
+        elif(layer==1):
+
             var = [v for v in tf.trainable_variables() if v.name == "Variable_2:0"][0]
             new_replaced_matrix = sess.run(var)
+            
             weight_to_restore = new_replaced_matrix[i_index,j_index]
+            
             new_replaced_matrix[i_index,j_index] = 0
 
             xhidden_pruned = (np.append(xhidden_pruned,i_index)).astype(int)
             yhidden_pruned = (np.append(yhidden_pruned,j_index)).astype(int)
             
             sess.run(tf.assign(var,tf.cast(tf.constant(new_replaced_matrix),tf.float32)))
+            
             minindex_layer1 += 1  
 
-        elif(minindex_layer0<x_columns*layer1_num):
-            var = [v for v in tf.trainable_variables() if v.name == "Variable:0"][0]
-            new_replaced_matrix = sess.run(var)
-            weight_to_restore = new_replaced_matrix[i_index,j_index]
-            new_replaced_matrix[i_index,j_index] = 0
-
-            xinput_pruned = (np.append(xinput_pruned,i_index)).astype(int)
-            yinput_pruned = (np.append(yinput_pruned,j_index)).astype(int)
-            
-
-            sess.run(tf.assign(var,tf.cast(tf.constant(new_replaced_matrix),tf.float32)))
-            minindex_layer0 += 1
-
-        else:
-            var = [v for v in tf.trainable_variables() if v.name == "Variable_2:0"][0]
-            new_replaced_matrix = sess.run(var)
-            weight_to_restore = new_replaced_matrix[i_index,j_index]
-            new_replaced_matrix[i_index,j_index] = 0
-
-            xhidden_pruned = (np.append(xhidden_pruned,i_index)).astype(int)
-            yhidden_pruned = (np.append(yhidden_pruned,j_index)).astype(int)
-            
-            sess.run(tf.assign(var,tf.cast(tf.constant(new_replaced_matrix),tf.float32)))
-            minindex_layer1 += 1 
+       
 
         print("Layer Pruned:{0},Index Pruned:{1},{2} Prune Count {3} and {4}".format(layer,i_index,j_index,minindex_layer0,minindex_layer1))
+        
+        # Get accuracy for pruned network against training set
         correct_pred = tf.argmax(prediction,1)
         prediction_values = sess.run([correct_pred],feed_dict={x: x_train})[0]
         print "Pruned Accuracy is:{0}".format(CalculateAccuracy(y_train,prediction_values))
         pruning_prediction = CalculateAccuracy(y_train,prediction_values)
 
+        # Fine tune parameters of ANN
         for epoch in range(20):
 
             for i in range(train_num):
@@ -257,7 +265,7 @@ def FitModel(x_train,y_train):
 
                 _,c = sess.run([train_step,loss],feed_dict={x:x_train_batch,y:y_train_batch})
                 
-            
+            # Replace the weights for the pruned weights to zero which are non zero because of fine tuning
             var = [v for v in tf.trainable_variables() if v.name == "Variable:0"][0]
             new_replaced_matrix = sess.run(var)
             
@@ -273,23 +281,52 @@ def FitModel(x_train,y_train):
 
             sess.run(tf.assign(var,tf.cast(tf.constant(new_replaced_matrix),tf.float32)))
 
+        # Print accuracy after fine tuning 
         prediction_values = sess.run([correct_pred],feed_dict={x: x_train})[0]
         print "Pruned Accuracy is:{0}".format(CalculateAccuracy(y_train,prediction_values))
         pruning_prediction = CalculateAccuracy(y_train,prediction_values)
         count += 1
+
+    # Restore final weight
     print("Go Back")
+
     if(layer_to_restore==0):
         var = [v for v in tf.trainable_variables() if v.name == "Variable:0"][0]
         new_replaced_matrix = sess.run(var)
         new_replaced_matrix[xindex_to_restore,yindex_to_restore] = weight_to_restore
 
         sess.run(tf.assign(var,tf.cast(tf.constant(new_replaced_matrix),tf.float32)))
+        minindex_layer0 -= 1
+    
     else:
         var = [v for v in tf.trainable_variables() if v.name == "Variable_2:0"][0]
         new_replaced_matrix = sess.run(var)
         new_replaced_matrix[xindex_to_restore,yindex_to_restore] = weight_to_restore
+        
         sess.run(tf.assign(var,tf.cast(tf.constant(new_replaced_matrix),tf.float32)))
+        minindex_layer1 -= 1
+
     print("Replaced")
+
+    # Replace the weights for the pruned weights to zero which are non zero because of fine tuning
+    var = [v for v in tf.trainable_variables() if v.name == "Variable:0"][0]
+    new_replaced_matrix = sess.run(var)
+            
+    for izero_index in range(minindex_layer0):
+        new_replaced_matrix[xinput_pruned[izero_index],yinput_pruned[izero_index]] = 0
+
+    sess.run(tf.assign(var,tf.cast(tf.constant(new_replaced_matrix),tf.float32)))
+            
+    var = [v for v in tf.trainable_variables() if v.name == "Variable_2:0"][0]
+    new_replaced_matrix = sess.run(var)
+            
+    for izero_index in range(minindex_layer1):
+        new_replaced_matrix[xhidden_pruned[izero_index],yhidden_pruned[izero_index]] = 0
+
+    sess.run(tf.assign(var,tf.cast(tf.constant(new_replaced_matrix),tf.float32)))
+
+    
+    # Fine tune network one last time
     for epoch in range(epoch_num):
 
         for i in range(train_num):
@@ -298,10 +335,29 @@ def FitModel(x_train,y_train):
 
             _,c = sess.run([train_step,loss],feed_dict={x:x_train_batch,y:y_train_batch})
     
+    # Replace the weights for the pruned weights to zero which are non zero because of fine tuning
+    var = [v for v in tf.trainable_variables() if v.name == "Variable:0"][0]
+    new_replaced_matrix = sess.run(var)
+            
+    for izero_index in range(minindex_layer0):
+        new_replaced_matrix[xinput_pruned[izero_index],yinput_pruned[izero_index]] = 0
+
+    sess.run(tf.assign(var,tf.cast(tf.constant(new_replaced_matrix),tf.float32)))
+            
+    var = [v for v in tf.trainable_variables() if v.name == "Variable_2:0"][0]
+    new_replaced_matrix = sess.run(var)
+            
+    for izero_index in range(minindex_layer1):
+        new_replaced_matrix[xhidden_pruned[izero_index],yhidden_pruned[izero_index]] = 0
+
+    sess.run(tf.assign(var,tf.cast(tf.constant(new_replaced_matrix),tf.float32)))
+
+    # The final accuracy of pruned network
     prediction_values = sess.run([correct_pred],feed_dict={x: x_train})[0]
     print "Pruned Accuracy is:{0}".format(CalculateAccuracy(y_train,prediction_values))
     pruning_prediction = CalculateAccuracy(y_train,prediction_values)
     
+    # Print weights in both layers
     var = [v for v in tf.trainable_variables() if v.name == "Variable:0"][0]
     print sess.run(var)
 
